@@ -1,4 +1,4 @@
-# GitHub Lead Time Calculator
+# [GitHub Lead Time Calculator](https://chernov-anton.github.io/lead-time/)
 
 A browser-based tool to calculate and visualize lead time metrics for GitHub team pull requests. Built with AI assistance (Claude) in approximately 1 hour.
 
