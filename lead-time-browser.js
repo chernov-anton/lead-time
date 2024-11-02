@@ -4,7 +4,17 @@ class LeadTimeCalculator {
     }
 
     formatDuration(minutes) {
-        return moment.duration(minutes, 'minutes').format('d[d] h[h] m[m]').replace(/\s*0[dhm]\s*/g, '').trim() || '0m';
+        const duration = moment.duration(minutes, 'minutes');
+        const days = Math.floor(duration.asDays());
+        const hours = duration.hours();
+        const mins = duration.minutes();
+        
+        let formatted = '';
+        if (days > 0) formatted += `${days}d `;
+        if (hours > 0) formatted += `${hours}h `;
+        if (mins > 0 || formatted === '') formatted += `${mins}m`;
+        
+        return formatted.trim();
     }
 
     async fetchWithAuth(url) {
