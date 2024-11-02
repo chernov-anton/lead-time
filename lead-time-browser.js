@@ -56,7 +56,6 @@ class LeadTimeCalculator {
 
         // First, get team members
         const teamMembers = await this.getTeamMembers(owner, teamSlug);
-        console.log(`Team members: ${teamMembers.join(', ')}`);
 
         while (true) {
             // Fetch pull requests
@@ -238,7 +237,15 @@ class LeadTimeCalculator {
     }
 }
 
+function minutesToDays(minutes) {
+    return minutes / (24 * 60);
+}
+
 function generateSVGChart(data, labels, yLabel, containerId, timeUnit) {
+    // Convert minutes to days for lead time charts
+    const isLeadTimeChart = yLabel.toLowerCase().includes('lead time');
+    const chartData = isLeadTimeChart ? data.map(minutesToDays) : data;
+    
     // Clear previous chart
     d3.select(`#${containerId}`).html('');
 
@@ -279,7 +286,7 @@ function generateSVGChart(data, labels, yLabel, containerId, timeUnit) {
         .range([0, width]);
 
     const y = d3.scaleLinear()
-        .domain([0, d3.max(data) * 1.1])
+        .domain([0, d3.max(chartData) * 1.1])
         .range([height, 0]);
 
     // Create line generator
@@ -289,9 +296,9 @@ function generateSVGChart(data, labels, yLabel, containerId, timeUnit) {
 
     // Create trend line
     const trendLineData = [];
-    if (data.length > 1) {
-        const xSeries = d3.range(data.length);
-        const ySeries = data;
+    if (chartData.length > 1) {
+        const xSeries = d3.range(chartData.length);
+        const ySeries = chartData;
         const xMean = d3.mean(xSeries);
         const yMean = d3.mean(ySeries);
         const slope = d3.sum(xSeries.map((x, i) => (x - xMean) * (ySeries[i] - yMean))) /
@@ -304,7 +311,7 @@ function generateSVGChart(data, labels, yLabel, containerId, timeUnit) {
         });
         trendLineData.push({
             x: x(formatPeriod(labels[labels.length - 1])),
-            y: y(slope * (data.length - 1) + intercept)
+            y: y(slope * (chartData.length - 1) + intercept)
         });
     }
 
@@ -316,21 +323,27 @@ function generateSVGChart(data, labels, yLabel, containerId, timeUnit) {
         .attr('transform', 'rotate(-45)')
         .style('text-anchor', 'end');
 
+    // Format y-axis ticks with one decimal place
+    const yAxis = d3.axisLeft(y)
+        .ticks(10)
+        .tickFormat(d => isLeadTimeChart ? `${d.toFixed(1)}d` : d);
+
     g.append('g')
-        .call(d3.axisLeft(y));
+        .call(yAxis);
 
     // Add y-axis label
+    const updatedYLabel = isLeadTimeChart ? yLabel.replace('(minutes)', '(days)') : yLabel;
     g.append('text')
         .attr('transform', 'rotate(-90)')
         .attr('y', 0 - margin.left)
         .attr('x', 0 - (height / 2))
         .attr('dy', '1em')
         .style('text-anchor', 'middle')
-        .text(yLabel);
+        .text(updatedYLabel);
 
     // Add the line
     g.append('path')
-        .datum(data)
+        .datum(chartData)
         .attr('fill', 'none')
         .attr('stroke', 'steelblue')
         .attr('stroke-width', 2)
@@ -350,7 +363,7 @@ function generateSVGChart(data, labels, yLabel, containerId, timeUnit) {
 
     // Add dots
     g.selectAll('circle')
-        .data(data)
+        .data(chartData)
         .enter()
         .append('circle')
         .attr('cx', (d, i) => x(formatPeriod(labels[i])))
