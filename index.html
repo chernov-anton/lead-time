@@ -50,15 +50,19 @@
     
     <div class="form-container">
         <div>
-            <input type="password" id="token" class="token-input" placeholder="GitHub Personal Access Token" />
+            <input type="password" id="token" class="token-input" placeholder="GitHub Personal Access Token" onchange="initializeSelects()" />
             <div class="help-text">
                 Create a token with 'repo' and 'read:org' scopes at 
                 <a href="https://github.com/settings/tokens" target="_blank">GitHub Settings → Developer settings → Personal access tokens</a>
             </div>
         </div>
         <div>
-            <input type="text" id="orgName" placeholder="Organization name (e.g., microsoft)" />
-            <input type="text" id="teamSlug" placeholder="Team Slug (e.g., my-team)" />
+            <select id="orgName">
+                <option value="">Select an organization</option>
+            </select>
+            <select id="teamSlug" disabled>
+                <option value="">Select a team</option>
+            </select>
             <input type="number" id="timeValue" placeholder="Time Value" value="1" min="1" />
             <select id="timeUnit">
                 <option value="weeks">Weeks</option>

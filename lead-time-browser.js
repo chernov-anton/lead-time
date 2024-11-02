@@ -279,6 +279,32 @@ class LeadTimeCalculator {
             throw error;
         }
     }
+
+    async getOrganizations() {
+        try {
+            const response = await this.fetchWithAuth('https://api.github.com/user/orgs');
+            return response.map(org => ({
+                name: org.login,
+                displayName: org.name || org.login
+            }));
+        } catch (error) {
+            throw new Error(`Failed to fetch organizations: ${error.message}`);
+        }
+    }
+
+    async getTeams(orgName) {
+        try {
+            const response = await this.fetchWithAuth(
+                `https://api.github.com/orgs/${orgName}/teams`
+            );
+            return response.map(team => ({
+                slug: team.slug,
+                name: team.name
+            }));
+        } catch (error) {
+            throw new Error(`Failed to fetch teams: ${error.message}`);
+        }
+    }
 }
 
 function minutesToDays(minutes) {
@@ -445,6 +471,58 @@ function generateSVGChart(data, labels, yLabel, containerId, timeUnit) {
         .attr('x', 25)
         .attr('y', 33)
         .text('Trend');
+}
+
+async function initializeSelects() {
+    const token = document.getElementById('token').value;
+    if (!token) return;
+
+    const calculator = new LeadTimeCalculator(token);
+    const errorDiv = document.getElementById('error');
+    const orgSelect = document.getElementById('orgName');
+    const teamSelect = document.getElementById('teamSlug');
+
+    try {
+        // Fetch and populate organizations
+        const organizations = await calculator.getOrganizations();
+        orgSelect.innerHTML = `
+            <option value="">Select an organization</option>
+            ${organizations.map(org => 
+                `<option value="${org.name}">${org.displayName}</option>`
+            ).join('')}
+        `;
+
+        // Add change handler for organization select
+        orgSelect.onchange = async () => {
+            const selectedOrg = orgSelect.value;
+            if (!selectedOrg) {
+                teamSelect.innerHTML = '<option value="">Select a team</option>';
+                teamSelect.disabled = true;
+                return;
+            }
+
+            try {
+                const teams = await calculator.getTeams(selectedOrg);
+                teamSelect.innerHTML = `
+                    <option value="">Select a team</option>
+                    ${teams.map(team => 
+                        `<option value="${team.slug}">${team.name}</option>`
+                    ).join('')}
+                `;
+                teamSelect.disabled = false;
+            } catch (error) {
+                errorDiv.textContent = `Error loading teams: ${error.message}`;
+                teamSelect.innerHTML = '<option value="">Error loading teams</option>';
+                teamSelect.disabled = true;
+            }
+        };
+
+        // Initially disable team select
+        teamSelect.disabled = true;
+
+    } catch (error) {
+        errorDiv.textContent = `Error loading organizations: ${error.message}`;
+    }
 }
 
 async function analyze() {
