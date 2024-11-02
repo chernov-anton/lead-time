@@ -378,13 +378,17 @@ function generateSVGChart(data, labels, yLabel, containerId, timeUnit) {
                       d3.sum(xSeries.map(x => Math.pow(x - xMean, 2)));
         const intercept = yMean - slope * xMean;
 
+        // Calculate y values for trend line
+        const startY = Math.max(0, slope * 0 + intercept);
+        const endY = Math.max(0, slope * (chartData.length - 1) + intercept);
+
         trendLineData.push({
             x: x(formatPeriod(labels[0])),
-            y: y(slope * 0 + intercept)
+            y: y(startY)
         });
         trendLineData.push({
             x: x(formatPeriod(labels[labels.length - 1])),
-            y: y(slope * (chartData.length - 1) + intercept)
+            y: y(endY)
         });
     }
 
