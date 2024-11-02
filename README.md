@@ -1,6 +1,6 @@
 # [GitHub Lead Time Calculator](https://chernov-anton.github.io/lead-time/)
 
-A browser-based tool to calculate and visualize lead time metrics for GitHub team pull requests. Built with AI assistance (Claude) in approximately 1 hour.
+A browser-based tool to calculate and visualize lead time metrics for GitHub team pull requests. Built with AI assistance (Claude).
 
 ## Features
 
@@ -72,7 +72,7 @@ Each chart includes a trend line to show the overall direction of the metric.
 
 ## Development
 
-This project was developed with AI assistance using Claude (Anthropic) in approximately one hour. The AI helped with:
+This project was developed with AI assistance using Claude (Anthropic). The AI helped with:
 - Initial code structure
 - D3.js chart implementation
 - GitHub API integration
@@ -89,6 +89,8 @@ This project was developed with AI assistance using Claude (Anthropic) in approx
 
 ## Future Improvements
 
+- Show empty periods
+- Improve trend line
 - Add data export functionality
 - Include PR review time metrics
 - Add more detailed PR statistics
