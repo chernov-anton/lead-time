@@ -94,7 +94,6 @@ This project was developed with AI assistance using Claude (Anthropic) in approx
 - Add more detailed PR statistics
 - Implement data caching
 - Add team member contribution breakdown
-- Support for multiple repositories comparison
 
 ## License
 

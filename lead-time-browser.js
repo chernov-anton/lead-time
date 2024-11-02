@@ -3,16 +3,6 @@ class LeadTimeCalculator {
         this.token = token;
     }
 
-    parseRepoUrl(repoUrl) {
-        try {
-            const url = new URL(repoUrl);
-            const [, owner, repo] = url.pathname.split('/');
-            return {owner, repo};
-        } catch (error) {
-            throw new Error(`Invalid repository URL: ${repoUrl}`);
-        }
-    }
-
     formatDuration(minutes) {
         const days = Math.floor(minutes / (24 * 60));
         const hours = Math.floor((minutes % (24 * 60)) / 60);
@@ -33,8 +23,15 @@ class LeadTimeCalculator {
                 'Accept': 'application/vnd.github.v3+json'
             }
         });
+        
+        // Check for rate limiting
+        const remaining = response.headers.get('x-ratelimit-remaining');
+        if (remaining && parseInt(remaining) < 10) {
+            await delay(1000); // Add a delay when close to rate limit
+        }
+        
         if (!response.ok) {
-            throw new Error(`GitHub API error: ${response.statusText | response.status}`);
+            throw new Error(`GitHub API error: ${response.statusText}`);
         }
         return response.json();
     }
@@ -50,29 +47,24 @@ class LeadTimeCalculator {
         }
     }
 
-    async getAllPullRequestsWithCommits({owner, repo, startDate, teamSlug}) {
+    async getAllPullRequestsWithCommits({owner, repo, startDate, teamMembers}) {
         let pullRequests = [];
         let page = 1;
 
-        // First, get team members
-        const teamMembers = await this.getTeamMembers(owner, teamSlug);
-
         while (true) {
-            // Fetch pull requests
             const prs = await this.fetchWithAuth(
                 `https://api.github.com/repos/${owner}/${repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100&page=${page}`
             );
-            console.log(teamMembers);
-            // Filter PRs by team members and date
+
             const relevantPRs = prs.filter(pr => 
                 pr.merged_at && 
                 moment(pr.merged_at).isAfter(startDate) &&
-                teamMembers.includes(pr.user.login)  // Only include PRs from team members
+                teamMembers.includes(pr.user.login)
             );
 
             if (relevantPRs.length === 0) break;
 
-            // Fetch commits for each PR
+            // Fetch commits for all PRs in parallel
             const prsWithCommits = await Promise.all(
                 relevantPRs.map(async (pr) => {
                     let allCommits = [];
@@ -176,7 +168,7 @@ class LeadTimeCalculator {
         };
     }
 
-    calculatePeriodMetrics(pullRequests, timeUnit) {
+    calculatePeriodMetrics(pullRequests, timeUnit, timeValue) {
         // Group PRs by the specified time unit
         const periodPRs = pullRequests.reduce((acc, pr) => {
             const periodStart = moment(pr.merged_at).startOf(timeUnit).format('YYYY-MM-DD');
@@ -188,31 +180,81 @@ class LeadTimeCalculator {
         }, {});
 
         // Calculate metrics for each period
-        return Object.entries(periodPRs).map(([periodStart, prs]) => {
-            const metrics = this.calculateMetrics(prs);
-            return {
-                periodStart,
-                periodEnd: moment(periodStart).endOf(timeUnit).format('YYYY-MM-DD'),
-                averageLeadTime: metrics.prBasedMetrics.averageLeadTime,
-                medianLeadTime: metrics.prBasedMetrics.medianLeadTime,
-                averageLeadTimeFormatted: this.formatDuration(metrics.prBasedMetrics.averageLeadTime),
-                medianLeadTimeFormatted: this.formatDuration(metrics.prBasedMetrics.medianLeadTime),
-                prCount: prs.length
-            };
-        }).sort((a, b) => moment(a.periodStart).diff(moment(b.periodStart)));
+        return Object.entries(periodPRs)
+            .map(([periodStart, prs]) => {
+                const metrics = this.calculateMetrics(prs);
+                return {
+                    periodStart,
+                    periodEnd: moment(periodStart).endOf(timeUnit).format('YYYY-MM-DD'),
+                    averageLeadTime: metrics.prBasedMetrics.averageLeadTime,
+                    medianLeadTime: metrics.prBasedMetrics.medianLeadTime,
+                    averageLeadTimeFormatted: this.formatDuration(metrics.prBasedMetrics.averageLeadTime),
+                    medianLeadTimeFormatted: this.formatDuration(metrics.prBasedMetrics.medianLeadTime),
+                    prCount: prs.length
+                };
+            })
+            .sort((a, b) => moment(a.periodStart).diff(moment(b.periodStart)))
+            .slice(-timeValue); // Only keep the last 'timeValue' number of periods
     }
 
-    async calculateLeadTime(repoUrl, teamSlug, timePeriod = 'months', timeValue = 1) {
+    async getTeamRepos(owner, teamSlug) {
         try {
-            const {owner, repo} = this.parseRepoUrl(repoUrl);
+            let allRepos = [];
+            let page = 1;
+            
+            while (true) {
+                const repos = await this.fetchWithAuth(
+                    `https://api.github.com/orgs/${owner}/teams/${teamSlug}/repos?per_page=100&page=${page}`
+                );
+                
+                if (repos.length === 0) break;
+                
+                // Filter for repos where team has admin permissions
+                const teamOwnedRepos = repos.filter(repo => 
+                    repo.permissions && (repo.permissions.maintain === true)
+                );
+                
+                allRepos = allRepos.concat(teamOwnedRepos);
+                page++;
+            }
+            
+            return allRepos.map(repo => repo.name);
+        } catch (error) {
+            throw new Error(`Failed to fetch team repositories: ${error.message}`);
+        }
+    }
+
+    async calculateLeadTime(orgName, teamSlug, timePeriod = 'months', timeValue = 1) {
+        try {
             const startDate = moment().subtract(timeValue, timePeriod).startOf(timePeriod).toISOString();
 
-            const pullRequests = await this.getAllPullRequestsWithCommits({owner, repo, startDate, teamSlug});
-            const metrics = this.calculateMetrics(pullRequests);
-            const periodMetrics = this.calculatePeriodMetrics(pullRequests, timePeriod.slice(0, -1));
+            // Fetch repos and team members in parallel
+            const [repos, teamMembers] = await Promise.all([
+                this.getTeamRepos(orgName, teamSlug),
+                this.getTeamMembers(orgName, teamSlug)
+            ]);
+
+            // Fetch PRs from all repos in parallel
+            const pullRequestsPromises = repos.map(repo => 
+                this.getAllPullRequestsWithCommits({
+                    owner: orgName, 
+                    repo, 
+                    startDate, 
+                    teamMembers
+                }).catch(error => {
+                    console.warn(`Failed to fetch PRs for ${orgName}/${repo}: ${error.message}`);
+                    return []; // Return empty array for failed repos
+                })
+            );
+
+            const pullRequestsArrays = await Promise.all(pullRequestsPromises);
+            const allPullRequests = pullRequestsArrays.flat();
+
+            const metrics = this.calculateMetrics(allPullRequests);
+            const periodMetrics = this.calculatePeriodMetrics(allPullRequests, timePeriod.slice(0, -1), timeValue);
 
             return {
-                repository: `${owner}/${repo}`,
+                organization: orgName,
                 team: teamSlug,
                 timePeriod: `${timeValue} ${timePeriod}`,
                 prMetrics: {
@@ -226,13 +268,15 @@ class LeadTimeCalculator {
                         duration: this.formatDuration(metrics.prBasedMetrics.maxLeadTime.time),
                         pr: metrics.prBasedMetrics.maxLeadTime.pr
                     },
-                    totalPRs: metrics.prBasedMetrics.totalPRs
+                    totalPRs: metrics.prBasedMetrics.totalPRs,
+                    repoCount: repos.length
                 },
                 periodMetrics: periodMetrics,
                 details: metrics.prDetails
             };
         } catch (error) {
-            throw new Error(`Failed to calculate lead time: ${error.message}`);
+            console.error('Error calculating lead time:', error);
+            throw error;
         }
     }
 }
@@ -405,7 +449,7 @@ function generateSVGChart(data, labels, yLabel, containerId, timeUnit) {
 
 async function analyze() {
     const token = document.getElementById('token').value;
-    const repoUrl = document.getElementById('repoUrl').value;
+    const orgName = document.getElementById('orgName').value;
     const teamSlug = document.getElementById('teamSlug').value;
     const timeValue = document.getElementById('timeValue').value;
     const timeUnit = document.getElementById('timeUnit').value;
@@ -422,8 +466,8 @@ async function analyze() {
         errorDiv.textContent = 'Team slug is required';
         return;
     }
-    if (!repoUrl) {
-        errorDiv.textContent = 'Repository URL is required';
+    if (!orgName) {
+        errorDiv.textContent = 'Organization name is required';
         return;
     }
 
@@ -433,7 +477,7 @@ async function analyze() {
 
     try {
         const calculator = new LeadTimeCalculator(token);
-        const results = await calculator.calculateLeadTime(repoUrl, teamSlug, timeUnit, parseInt(timeValue));
+        const results = await calculator.calculateLeadTime(orgName, teamSlug, timeUnit, parseInt(timeValue));
 
         // Generate charts using the time unit for proper grouping
         const timeUnitSingular = timeUnit.slice(0, -1); // Remove 's' from the end
