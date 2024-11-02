@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Lead Time Analysis</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .form-container { 
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        input, select, button {
+            margin: 5px;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            padding: 8px 16px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        #error {
+            color: red;
+            text-align: center;
+            margin: 10px 0;
+        }
+        .token-input {
+            width: 300px;
+        }
+        .help-text {
+            font-size: 0.8em;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Lead Time Analysis</h1>
+    
+    <div class="form-container">
+        <div>
+            <input type="password" id="token" class="token-input" placeholder="GitHub Personal Access Token" />
+            <div class="help-text">
+                Create a token with 'repo' and 'read:org' scopes at 
+                <a href="https://github.com/settings/tokens" target="_blank">GitHub Settings → Developer settings → Personal access tokens</a>
+            </div>
+        </div>
+        <div>
+            <input type="text" id="repoUrl" placeholder="Repository URL (e.g., https://github.com/owner/repo)" />
+            <input type="text" id="teamSlug" placeholder="Team Slug (e.g., my-team)" />
+            <input type="number" id="timeValue" placeholder="Time Value" value="1" min="1" />
+            <select id="timeUnit">
+                <option value="weeks">Weeks</option>
+                <option value="months">Months</option>
+                <option value="days">Days</option>
+                <option value="years">Years</option>
+            </select>
+            <button onclick="analyze()">Analyze</button>
+        </div>
+    </div>
+
+    <div id="error"></div>
+    <div id="loading" class="loading" style="display: none;">Loading...</div>
+    <div id="results" style="display: none;">
+        <div class="chart">
+            <h2>Average Lead Time</h2>
+            <div id="avgChart"></div>
+        </div>
+        
+        <div class="chart">
+            <h2>Median Lead Time</h2>
+            <div id="medianChart"></div>
+        </div>
+        
+        <div class="chart">
+            <h2>PR Count</h2>
+            <div id="prChart"></div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="lead-time-browser.js"></script>
+</body>
+</html> 
