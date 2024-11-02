@@ -190,11 +190,18 @@ class LeadTimeCalculator {
                     medianLeadTime: metrics.prBasedMetrics.medianLeadTime,
                     averageLeadTimeFormatted: this.formatDuration(metrics.prBasedMetrics.averageLeadTime),
                     medianLeadTimeFormatted: this.formatDuration(metrics.prBasedMetrics.medianLeadTime),
-                    prCount: prs.length
+                    prCount: prs.length,
+                    prs: prs.map(pr => ({
+                        ...pr,
+                        leadTimeFormatted: this.formatDuration(
+                            moment(pr.merged_at).diff(moment(pr.created_at), 'minutes')
+                        ),
+                        commits: pr.commits || [] // Ensure commits array exists
+                    })).sort((a, b) => moment(b.merged_at).diff(moment(a.merged_at))) // Sort by merge date
                 };
             })
             .sort((a, b) => moment(a.periodStart).diff(moment(b.periodStart)))
-            .slice(-timeValue); // Only keep the last 'timeValue' number of periods
+            .slice(-timeValue);
     }
 
     async getTeamRepos(owner, teamSlug) {
@@ -620,6 +627,65 @@ async function initializeSelects() {
     }
 }
 
+function generatePRDetailsTable(periodMetrics) {
+    let html = '<div class="pr-details">';
+    
+    periodMetrics.forEach(period => {
+        // Find the PR with the longest lead time in this period
+        const slowestPR = period.prs.reduce((max, pr) => 
+            moment(pr.merged_at).diff(moment(pr.created_at), 'minutes') > 
+            moment(max.merged_at).diff(moment(max.created_at), 'minutes') ? pr : max
+        , period.prs[0]);
+        
+        html += `
+            <div class="period-section">
+                <h3>Period: ${period.periodStart} to ${period.periodEnd}</h3>
+                <div class="period-summary">
+                    <p>Average Lead Time: ${period.averageLeadTimeFormatted}</p>
+                    <p>Median Lead Time: ${period.medianLeadTimeFormatted}</p>
+                    <p>Total PRs: ${period.prCount}</p>
+                </div>
+                <table class="pr-table">
+                    <thead>
+                        <tr>
+                            <th>PR</th>
+                            <th>Author</th>
+                            <th>Lead Time</th>
+                            <th>Commits</th>
+                            <th>Created</th>
+                            <th>Merged</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${period.prs.map(pr => `
+                            <tr class="${pr.number === slowestPR.number ? 'slowest-pr' : ''}">
+                                <td><a href="${pr.html_url}" target="_blank">#${pr.number} ${escapeHtml(pr.title)}</a></td>
+                                <td>${pr.user.login}</td>
+                                <td>${pr.leadTimeFormatted}</td>
+                                <td>${pr.commits.length}</td>
+                                <td>${moment(pr.created_at).format('YYYY-MM-DD HH:mm')}</td>
+                                <td>${moment(pr.merged_at).format('YYYY-MM-DD HH:mm')}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    return html;
+}
+
+function escapeHtml(unsafe) {
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 async function analyze() {
     const token = document.getElementById('token').value;
     const orgName = document.getElementById('orgName').value;
@@ -646,21 +712,37 @@ async function analyze() {
 
     errorDiv.textContent = '';
     loadingDiv.style.display = 'block';
+    
+    // Clear previous results
     resultsDiv.style.display = 'none';
+    resultsDiv.innerHTML = `
+        <div class="chart">
+            <h2>Average Lead Time</h2>
+            <div id="avgChart"></div>
+        </div>
+        
+        <div class="chart">
+            <h2>Median Lead Time</h2>
+            <div id="medianChart"></div>
+        </div>
+        
+        <div class="chart">
+            <h2>PR Count</h2>
+            <div id="prChart"></div>
+        </div>
+    `;
 
     try {
         const calculator = new LeadTimeCalculator(token);
         const results = await calculator.calculateLeadTime(orgName, selectedTeams, timeUnit, parseInt(timeValue));
 
-        // Generate charts using the time unit for proper grouping
-        const timeUnitSingular = timeUnit.slice(0, -1); // Remove 's' from the end
-
+        // Generate charts
         generateSVGChart(
             results.periodMetrics.map(period => period.averageLeadTime),
             results.periodMetrics.map(period => period.periodStart),
             'Average Lead Time (minutes)',
             'avgChart',
-            timeUnitSingular
+            timeUnit.slice(0, -1)
         );
 
         generateSVGChart(
@@ -668,7 +750,7 @@ async function analyze() {
             results.periodMetrics.map(period => period.periodStart),
             'Median Lead Time (minutes)',
             'medianChart',
-            timeUnitSingular
+            timeUnit.slice(0, -1)
         );
 
         generateSVGChart(
@@ -676,10 +758,18 @@ async function analyze() {
             results.periodMetrics.map(period => period.periodStart),
             'Number of PRs',
             'prChart',
-            timeUnitSingular
+            timeUnit.slice(0, -1)
         );
 
-        // Show results
+        // Add PR details table
+        const detailsDiv = document.createElement('div');
+        detailsDiv.className = 'details-section';
+        detailsDiv.innerHTML = `
+            <h2>Detailed PR Analysis</h2>
+            ${generatePRDetailsTable(results.periodMetrics)}
+        `;
+        resultsDiv.appendChild(detailsDiv);
+
         resultsDiv.style.display = 'block';
     } catch (error) {
         errorDiv.textContent = error.message;

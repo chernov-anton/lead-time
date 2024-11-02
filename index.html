@@ -127,6 +127,120 @@
         .options-container::-webkit-scrollbar-thumb:hover {
             background: #555;
         }
+        .pr-details {
+            margin-top: 30px;
+        }
+        .period-section {
+            margin-bottom: 40px;
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            position: relative;
+        }
+        .period-section h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .period-summary {
+            margin: 15px 0;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            display: flex;
+            gap: 20px;
+        }
+        .period-summary p {
+            margin: 0;
+            color: #666;
+        }
+        .pr-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            margin-top: 15px;
+            table-layout: fixed;
+        }
+        .pr-table th,
+        .pr-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .pr-table th {
+            background: #f1f1f1;
+            font-weight: 600;
+        }
+        .pr-table tr:hover {
+            background: #f5f5f5;
+        }
+        .pr-table a {
+            color: #007bff;
+            text-decoration: none;
+        }
+        .pr-table a:hover {
+            text-decoration: underline;
+        }
+        .details-section {
+            margin-top: 40px;
+            border-top: 2px solid #eee;
+            padding-top: 20px;
+        }
+        .pr-table th:nth-child(1),
+        .pr-table td:nth-child(1) {
+            width: 35%; /* PR title */
+        }
+        .pr-table th:nth-child(2),
+        .pr-table td:nth-child(2) {
+            width: 15%; /* Author */
+        }
+        .pr-table th:nth-child(3),
+        .pr-table td:nth-child(3) {
+            width: 10%; /* Lead Time */
+        }
+        .pr-table th:nth-child(4),
+        .pr-table td:nth-child(4) {
+            width: 10%; /* Commits */
+        }
+        .pr-table th:nth-child(5),
+        .pr-table td:nth-child(5),
+        .pr-table th:nth-child(6),
+        .pr-table td:nth-child(6) {
+            width: 15%; /* Dates */
+        }
+        .pr-table td:first-child {
+            position: relative;
+        }
+        .pr-table td:first-child:hover::after {
+            content: attr(data-title);
+            position: absolute;
+            left: 0;
+            top: 100%;
+            background: #333;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            z-index: 1000;
+            white-space: normal;
+            max-width: 300px;
+            word-wrap: break-word;
+        }
+        .pr-table tr.slowest-pr {
+            background-color: #fff3f3;
+        }
+        .pr-table tr.slowest-pr:hover {
+            background-color: #ffe9e9;
+        }
+        .period-section::after {
+            content: "🐌 Highlighted rows indicate PRs with longest lead time in the period";
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            font-size: 0.8em;
+            color: #666;
+        }
     </style>
 </head>
 <body>
