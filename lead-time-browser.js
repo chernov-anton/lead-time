@@ -224,15 +224,27 @@ class LeadTimeCalculator {
         }
     }
 
-    async calculateLeadTime(orgName, teamSlug, timePeriod = 'months', timeValue = 1) {
+    async calculateLeadTime(orgName, teamSlugs, timePeriod = 'months', timeValue = 1) {
         try {
             const startDate = moment().subtract(timeValue, timePeriod).startOf(timePeriod).toISOString();
 
-            // Fetch repos and team members in parallel
-            const [repos, teamMembers] = await Promise.all([
-                this.getTeamRepos(orgName, teamSlug),
+            // Fetch team members for all teams in parallel
+            const teamMembersPromises = teamSlugs.map(teamSlug => 
                 this.getTeamMembers(orgName, teamSlug)
-            ]);
+            );
+            const teamMembersArrays = await Promise.all(teamMembersPromises);
+            
+            // Combine and deduplicate team members
+            const teamMembers = [...new Set(teamMembersArrays.flat())];
+
+            // Fetch repos for all teams in parallel
+            const reposPromises = teamSlugs.map(teamSlug => 
+                this.getTeamRepos(orgName, teamSlug)
+            );
+            const reposArrays = await Promise.all(reposPromises);
+            
+            // Combine and deduplicate repos
+            const repos = [...new Set(reposArrays.flat())];
 
             // Fetch PRs from all repos in parallel
             const pullRequestsPromises = repos.map(repo => 
@@ -243,7 +255,7 @@ class LeadTimeCalculator {
                     teamMembers
                 }).catch(error => {
                     console.warn(`Failed to fetch PRs for ${orgName}/${repo}: ${error.message}`);
-                    return []; // Return empty array for failed repos
+                    return [];
                 })
             );
 
@@ -255,7 +267,7 @@ class LeadTimeCalculator {
 
             return {
                 organization: orgName,
-                team: teamSlug,
+                team: teamSlugs,
                 timePeriod: `${timeValue} ${timePeriod}`,
                 prMetrics: {
                     averageLeadTime: this.formatDuration(metrics.prBasedMetrics.averageLeadTime),
@@ -473,6 +485,102 @@ function generateSVGChart(data, labels, yLabel, containerId, timeUnit) {
         .text('Trend');
 }
 
+function createCustomSelect(teams) {
+    const teamSelect = document.getElementById('teamSlug');
+    const customSelect = document.createElement('div');
+    customSelect.className = 'custom-select';
+    
+    // Create search input
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.placeholder = 'Search teams...';
+    searchInput.className = 'team-search';
+    
+    // Create options container
+    const optionsContainer = document.createElement('div');
+    optionsContainer.className = 'options-container';
+    
+    // Create "Select All" option
+    const selectAllDiv = document.createElement('div');
+    selectAllDiv.className = 'select-option select-all';
+    const selectAllCheckbox = document.createElement('input');
+    selectAllCheckbox.type = 'checkbox';
+    selectAllCheckbox.id = 'select-all';
+    const selectAllLabel = document.createElement('label');
+    selectAllLabel.htmlFor = 'select-all';
+    selectAllLabel.textContent = 'Select All';
+    selectAllDiv.appendChild(selectAllCheckbox);
+    selectAllDiv.appendChild(selectAllLabel);
+    
+    // Add teams
+    const options = teams.map(team => {
+        const optionDiv = document.createElement('div');
+        optionDiv.className = 'select-option';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = team.slug;
+        checkbox.id = `team-${team.slug}`;
+        
+        const label = document.createElement('label');
+        label.htmlFor = `team-${team.slug}`;
+        label.textContent = team.name;
+        
+        optionDiv.appendChild(checkbox);
+        optionDiv.appendChild(label);
+        return optionDiv;
+    });
+    
+    // Add event listeners
+    searchInput.addEventListener('input', (e) => {
+        const searchText = e.target.value.toLowerCase();
+        options.forEach(option => {
+            const label = option.querySelector('label').textContent.toLowerCase();
+            option.style.display = label.includes(searchText) ? 'block' : 'none';
+        });
+    });
+    
+    selectAllCheckbox.addEventListener('change', (e) => {
+        const visibleOptions = options.filter(opt => opt.style.display !== 'none');
+        visibleOptions.forEach(option => {
+            option.querySelector('input').checked = e.target.checked;
+        });
+        updateSelectedCount();
+    });
+    
+    // Selected count display
+    const selectedCount = document.createElement('div');
+    selectedCount.className = 'selected-count';
+    
+    function updateSelectedCount() {
+        const checkedCount = options.filter(opt => opt.querySelector('input').checked).length;
+        selectedCount.textContent = `${checkedCount} team${checkedCount !== 1 ? 's' : ''} selected`;
+    }
+    
+    options.forEach(option => {
+        option.querySelector('input').addEventListener('change', updateSelectedCount);
+    });
+    
+    // Assemble the custom select
+    optionsContainer.appendChild(selectAllDiv);
+    options.forEach(option => optionsContainer.appendChild(option));
+    customSelect.appendChild(searchInput);
+    customSelect.appendChild(optionsContainer);
+    customSelect.appendChild(selectedCount);
+    
+    // Replace the original select with custom select
+    teamSelect.parentNode.replaceChild(customSelect, teamSelect);
+    
+    // Update the analyze function to work with custom select
+    window.getSelectedTeams = () => {
+        return options
+            .filter(option => option.querySelector('input').checked)
+            .map(option => option.querySelector('input').value);
+    };
+    
+    updateSelectedCount();
+}
+
 async function initializeSelects() {
     const token = document.getElementById('token').value;
     if (!token) return;
@@ -480,7 +588,6 @@ async function initializeSelects() {
     const calculator = new LeadTimeCalculator(token);
     const errorDiv = document.getElementById('error');
     const orgSelect = document.getElementById('orgName');
-    const teamSelect = document.getElementById('teamSlug');
 
     try {
         // Fetch and populate organizations
@@ -496,29 +603,17 @@ async function initializeSelects() {
         orgSelect.onchange = async () => {
             const selectedOrg = orgSelect.value;
             if (!selectedOrg) {
-                teamSelect.innerHTML = '<option value="">Select a team</option>';
-                teamSelect.disabled = true;
+                document.querySelector('.custom-select')?.remove();
                 return;
             }
 
             try {
                 const teams = await calculator.getTeams(selectedOrg);
-                teamSelect.innerHTML = `
-                    <option value="">Select a team</option>
-                    ${teams.map(team => 
-                        `<option value="${team.slug}">${team.name}</option>`
-                    ).join('')}
-                `;
-                teamSelect.disabled = false;
+                createCustomSelect(teams);
             } catch (error) {
                 errorDiv.textContent = `Error loading teams: ${error.message}`;
-                teamSelect.innerHTML = '<option value="">Error loading teams</option>';
-                teamSelect.disabled = true;
             }
         };
-
-        // Initially disable team select
-        teamSelect.disabled = true;
 
     } catch (error) {
         errorDiv.textContent = `Error loading organizations: ${error.message}`;
@@ -528,7 +623,7 @@ async function initializeSelects() {
 async function analyze() {
     const token = document.getElementById('token').value;
     const orgName = document.getElementById('orgName').value;
-    const teamSlug = document.getElementById('teamSlug').value;
+    const selectedTeams = window.getSelectedTeams();
     const timeValue = document.getElementById('timeValue').value;
     const timeUnit = document.getElementById('timeUnit').value;
     const errorDiv = document.getElementById('error');
@@ -540,8 +635,8 @@ async function analyze() {
         errorDiv.textContent = 'GitHub token is required';
         return;
     }
-    if (!teamSlug) {
-        errorDiv.textContent = 'Team slug is required';
+    if (selectedTeams.length === 0) {
+        errorDiv.textContent = 'At least one team must be selected';
         return;
     }
     if (!orgName) {
@@ -555,7 +650,7 @@ async function analyze() {
 
     try {
         const calculator = new LeadTimeCalculator(token);
-        const results = await calculator.calculateLeadTime(orgName, teamSlug, timeUnit, parseInt(timeValue));
+        const results = await calculator.calculateLeadTime(orgName, selectedTeams, timeUnit, parseInt(timeValue));
 
         // Generate charts using the time unit for proper grouping
         const timeUnitSingular = timeUnit.slice(0, -1); // Remove 's' from the end
