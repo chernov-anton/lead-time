@@ -122,19 +122,24 @@ class LeadTimeCalculator {
         const prLeadTimes = pullRequests.map(pr => {
             const firstCommitDate = pr.commits[0]?.commitDate;
             const mergedAt = pr.merged_at;
+            const createdAt = pr.created_at;
             const leadTime = moment(mergedAt).diff(moment(firstCommitDate), 'minutes');
      
             return {
-                prNumber: pr.number,
+                number: pr.number,
                 title: pr.title,
                 firstCommitDate,
                 mergedAt,
-                leadTime,
+                createdAt,
                 commitCount: pr.commits.length,
-                commits: pr.commits,
-                html_url: pr.html_url
+                html_url: pr.html_url,
+                user: pr.user,
+                leadTime,
+                leadTimeMinutes: leadTime,
+                leadTimeFormatted: this.formatDuration(leadTime),
+                commits: pr.commits || []
             };
-        });
+        }).sort((a, b) => moment(b.mergedAt).diff(moment(a.mergedAt)));
 
         const prLeadTimeValues = prLeadTimes.map(pr => pr.leadTime);
 
@@ -149,7 +154,7 @@ class LeadTimeCalculator {
                 minLeadTime: {
                     time: minPR.leadTime,
                     pr: {
-                        number: minPR.prNumber,
+                        number: minPR.number,
                         url: minPR.html_url,
                         title: minPR.title
                     }
@@ -157,7 +162,7 @@ class LeadTimeCalculator {
                 maxLeadTime: {
                     time: maxPR.leadTime,
                     pr: {
-                        number: maxPR.prNumber,
+                        number: maxPR.number,
                         url: maxPR.html_url,
                         title: maxPR.title
                     }
@@ -191,13 +196,7 @@ class LeadTimeCalculator {
                     averageLeadTimeFormatted: this.formatDuration(metrics.prBasedMetrics.averageLeadTime),
                     medianLeadTimeFormatted: this.formatDuration(metrics.prBasedMetrics.medianLeadTime),
                     prCount: prs.length,
-                    prs: prs.map(pr => ({
-                        ...pr,
-                        leadTimeFormatted: this.formatDuration(
-                            moment(pr.merged_at).diff(moment(pr.created_at), 'minutes')
-                        ),
-                        commits: pr.commits || [] // Ensure commits array exists
-                    })).sort((a, b) => moment(b.merged_at).diff(moment(a.merged_at))) // Sort by merge date
+                    prs: metrics.prDetails
                 };
             })
             .sort((a, b) => moment(a.periodStart).diff(moment(b.periodStart)))
@@ -269,29 +268,13 @@ class LeadTimeCalculator {
             const pullRequestsArrays = await Promise.all(pullRequestsPromises);
             const allPullRequests = pullRequestsArrays.flat();
 
-            const metrics = this.calculateMetrics(allPullRequests);
             const periodMetrics = this.calculatePeriodMetrics(allPullRequests, timePeriod.slice(0, -1), timeValue);
 
             return {
                 organization: orgName,
                 team: teamSlugs,
                 timePeriod: `${timeValue} ${timePeriod}`,
-                prMetrics: {
-                    averageLeadTime: this.formatDuration(metrics.prBasedMetrics.averageLeadTime),
-                    medianLeadTime: this.formatDuration(metrics.prBasedMetrics.medianLeadTime),
-                    minLeadTime: {
-                        duration: this.formatDuration(metrics.prBasedMetrics.minLeadTime.time),
-                        pr: metrics.prBasedMetrics.minLeadTime.pr
-                    },
-                    maxLeadTime: {
-                        duration: this.formatDuration(metrics.prBasedMetrics.maxLeadTime.time),
-                        pr: metrics.prBasedMetrics.maxLeadTime.pr
-                    },
-                    totalPRs: metrics.prBasedMetrics.totalPRs,
-                    repoCount: repos.length
-                },
-                periodMetrics: periodMetrics,
-                details: metrics.prDetails
+                periodMetrics: periodMetrics
             };
         } catch (error) {
             console.error('Error calculating lead time:', error);
@@ -633,8 +616,7 @@ function generatePRDetailsTable(periodMetrics) {
     periodMetrics.forEach(period => {
         // Find the PR with the longest lead time in this period
         const slowestPR = period.prs.reduce((max, pr) => 
-            moment(pr.merged_at).diff(moment(pr.created_at), 'minutes') > 
-            moment(max.merged_at).diff(moment(max.created_at), 'minutes') ? pr : max
+            pr.leadTimeMinutes > max.leadTimeMinutes ? pr : max
         , period.prs[0]);
         
         html += `
@@ -663,8 +645,8 @@ function generatePRDetailsTable(periodMetrics) {
                                 <td>${pr.user.login}</td>
                                 <td>${pr.leadTimeFormatted}</td>
                                 <td>${pr.commits.length}</td>
-                                <td>${moment(pr.created_at).format('YYYY-MM-DD HH:mm')}</td>
-                                <td>${moment(pr.merged_at).format('YYYY-MM-DD HH:mm')}</td>
+                                <td>${moment(pr.createdAt).format('YYYY-MM-DD HH:mm')}</td>
+                                <td>${moment(pr.mergedAt).format('YYYY-MM-DD HH:mm')}</td>
                             </tr>
                         `).join('')}
                     </tbody>
