@@ -4,13 +4,16 @@ A browser-based tool to calculate and visualize lead time metrics for GitHub tea
 
 ## Features
 
-- Calculate lead time metrics for specific GitHub teams
-- Filter by time period (days, weeks, months, years)
+- Calculate lead time metrics for GitHub teams
+- Multiple team selection with search functionality
+- Flexible date range selection
+- Customizable time unit grouping (daily, weekly, monthly)
 - Interactive SVG charts showing:
   - Average lead time
   - Median lead time
   - Number of PRs
 - Trend line analysis
+- Detailed PR breakdown by period
 - No backend required - runs entirely in browser
 
 ## Setup
@@ -38,17 +41,19 @@ A browser-based tool to calculate and visualize lead time metrics for GitHub tea
 ### Calculate Lead Time
 
 1. Enter your GitHub Personal Access Token
-2. Provide the repository URL (e.g., `https://github.com/owner/repo`)
-3. Enter your team slug (found in the team's URL, e.g., if the team URL is `https://github.com/orgs/owner/teams/my-team`, the slug is `my-team`)
-4. Select the time period and value (e.g., 3 months)
-5. Click "Analyze"
+2. Select your organization from the dropdown
+3. Select one or more teams using the searchable multi-select
+4. Choose your date range using the date pickers
+5. Select your preferred time unit (daily, weekly, or monthly)
+6. Click "Analyze"
 
-The tool will generate three charts:
-- Average lead time over time
-- Median lead time over time
-- Number of PRs over time
-
-Each chart includes a trend line to show the overall direction of the metric.
+The tool will generate:
+- Three interactive charts:
+  - Average lead time over time
+  - Median lead time over time
+  - Number of PRs over time
+- Detailed breakdown of PRs by period
+- Trend analysis for each metric
 
 ## Metrics Explanation
 
@@ -78,6 +83,7 @@ This project was developed with AI assistance using Claude (Anthropic). The AI h
 - GitHub API integration
 - Error handling
 - Documentation
+- UI/UX improvements
 
 ## Limitations
 
@@ -91,7 +97,6 @@ This project was developed with AI assistance using Claude (Anthropic). The AI h
 
 - Add data export functionality
 - Include PR review time metrics
-- Add more detailed PR statistics
 - Implement data caching
 - Add team member contribution breakdown
 
@@ -103,4 +108,4 @@ MIT
 
 - Built with assistance from Claude AI (Anthropic)
 - Uses GitHub REST API
-- Visualization powered by D3.js 
+- Visualization powered by D3.js
