@@ -175,6 +175,15 @@ class LeadTimeCalculator {
     }
 
     calculatePeriodMetrics(pullRequests, timeUnit, timeValue) {
+        // Create array of all periods in the time range
+        const now = moment();
+        const periods = [];
+        for (let i = 0; i < timeValue; i++) {
+            const periodStart = moment(now).subtract(i, timeUnit + 's').startOf(timeUnit).format('YYYY-MM-DD');
+            periods.push(periodStart);
+        }
+        periods.reverse();
+
         // Group PRs by the specified time unit
         const periodPRs = pullRequests.reduce((acc, pr) => {
             const periodStart = moment(pr.merged_at).startOf(timeUnit).format('YYYY-MM-DD');
@@ -185,23 +194,35 @@ class LeadTimeCalculator {
             return acc;
         }, {});
 
-        // Calculate metrics for each period
-        return Object.entries(periodPRs)
-            .map(([periodStart, prs]) => {
-                const metrics = this.calculateMetrics(prs);
+        // Calculate metrics for each period, including empty ones
+        return periods.map(periodStart => {
+            const prs = periodPRs[periodStart] || [];
+            
+            if (prs.length === 0) {
                 return {
                     periodStart,
                     periodEnd: moment(periodStart).endOf(timeUnit).format('YYYY-MM-DD'),
-                    averageLeadTime: metrics.prBasedMetrics.averageLeadTime,
-                    medianLeadTime: metrics.prBasedMetrics.medianLeadTime,
-                    averageLeadTimeFormatted: this.formatDuration(metrics.prBasedMetrics.averageLeadTime),
-                    medianLeadTimeFormatted: this.formatDuration(metrics.prBasedMetrics.medianLeadTime),
-                    prCount: prs.length,
-                    prs: metrics.prDetails
+                    averageLeadTime: null,
+                    medianLeadTime: null,
+                    averageLeadTimeFormatted: '-',
+                    medianLeadTimeFormatted: '-',
+                    prCount: 0,
+                    prs: []
                 };
-            })
-            .sort((a, b) => moment(a.periodStart).diff(moment(b.periodStart)))
-            .slice(-timeValue);
+            }
+
+            const metrics = this.calculateMetrics(prs);
+            return {
+                periodStart,
+                periodEnd: moment(periodStart).endOf(timeUnit).format('YYYY-MM-DD'),
+                averageLeadTime: metrics.prBasedMetrics.averageLeadTime,
+                medianLeadTime: metrics.prBasedMetrics.medianLeadTime,
+                averageLeadTimeFormatted: this.formatDuration(metrics.prBasedMetrics.averageLeadTime),
+                medianLeadTimeFormatted: this.formatDuration(metrics.prBasedMetrics.medianLeadTime),
+                prCount: prs.length,
+                prs: metrics.prDetails
+            };
+        });
     }
 
     async getTeamRepos(owner, teamSlug) {
@@ -311,7 +332,7 @@ class LeadTimeCalculator {
 }
 
 function minutesToDays(minutes) {
-    return minutes / (24 * 60);
+    return minutes == null ? null : minutes / (24 * 60);
 }
 
 function generateSVGChart(data, labels, yLabel, containerId, timeUnit) {
@@ -319,6 +340,13 @@ function generateSVGChart(data, labels, yLabel, containerId, timeUnit) {
     const isLeadTimeChart = yLabel.toLowerCase().includes('lead time');
     const chartData = isLeadTimeChart ? data.map(minutesToDays) : data;
     
+    // Filter out null values while keeping track of their indices
+    const validData = chartData.map((value, index) => ({
+        value,
+        label: labels[index],
+        index
+    })).filter(item => item.value !== null);
+
     // Clear previous chart
     d3.select(`#${containerId}`).html('');
 
@@ -353,25 +381,26 @@ function generateSVGChart(data, labels, yLabel, containerId, timeUnit) {
         }
     };
 
-    // Create scales
+    // Create scales using all labels for x-axis
     const x = d3.scalePoint()
         .domain(labels.map(formatPeriod))
         .range([0, width]);
 
     const y = d3.scaleLinear()
-        .domain([0, d3.max(chartData) * 1.1])
+        .domain([0, d3.max(validData.map(d => d.value)) * 1.1])
         .range([height, 0]);
 
     // Create line generator
     const line = d3.line()
-        .x((d, i) => x(formatPeriod(labels[i])))
-        .y(d => y(d));
+        .defined(d => d.value !== null)
+        .x(d => x(formatPeriod(d.label)))
+        .y(d => y(d.value));
 
     // Create trend line
     const trendLineData = [];
     if (chartData.length > 1) {
         const xSeries = d3.range(chartData.length);
-        const ySeries = chartData;
+        const ySeries = validData.map(d => d.value);
         const xMean = d3.mean(xSeries);
         const yMean = d3.mean(ySeries);
         const slope = d3.sum(xSeries.map((x, i) => (x - xMean) * (ySeries[i] - yMean))) /
@@ -418,9 +447,9 @@ function generateSVGChart(data, labels, yLabel, containerId, timeUnit) {
         .style('text-anchor', 'middle')
         .text(updatedYLabel);
 
-    // Add the line
+    // Add the line (only connecting valid points)
     g.append('path')
-        .datum(chartData)
+        .datum(validData)
         .attr('fill', 'none')
         .attr('stroke', 'steelblue')
         .attr('stroke-width', 2)
@@ -440,11 +469,11 @@ function generateSVGChart(data, labels, yLabel, containerId, timeUnit) {
 
     // Add dots
     g.selectAll('circle')
-        .data(chartData)
+        .data(validData)
         .enter()
         .append('circle')
-        .attr('cx', (d, i) => x(formatPeriod(labels[i])))
-        .attr('cy', d => y(d))
+        .attr('cx', d => x(formatPeriod(d.label)))
+        .attr('cy', d => y(d.value))
         .attr('r', 4)
         .attr('fill', 'steelblue');
 

@@ -89,7 +89,6 @@ This project was developed with AI assistance using Claude (Anthropic). The AI h
 
 ## Future Improvements
 
-- Show empty periods
 - Add data export functionality
 - Include PR review time metrics
 - Add more detailed PR statistics
