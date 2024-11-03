@@ -48,7 +48,7 @@ class LeadTimeCalculator {
         }
     }
 
-    async getAllPullRequestsWithCommits({owner, repo, startDate, teamMembers}) {
+    async getAllPullRequestsWithCommits({owner, repo, startDate, endDate, teamMembers}) {
         let pullRequests = [];
         let page = 1;
 
@@ -60,6 +60,7 @@ class LeadTimeCalculator {
             const relevantPRs = prs.filter(pr => 
                 pr.merged_at && 
                 moment(pr.merged_at).isAfter(startDate) &&
+                moment(pr.merged_at).isBefore(endDate) &&
                 teamMembers.includes(pr.user.login)
             );
 
@@ -174,15 +175,18 @@ class LeadTimeCalculator {
         };
     }
 
-    calculatePeriodMetrics(pullRequests, timeUnit, timeValue) {
+    calculatePeriodMetrics(pullRequests, timeUnit, timeValue, startDate, endDate) {
         // Create array of all periods in the time range
-        const now = moment();
+        const start = moment(startDate).startOf('day');
+        const end = moment(endDate).endOf('day');
         const periods = [];
-        for (let i = 0; i < timeValue; i++) {
-            const periodStart = moment(now).subtract(i, timeUnit + 's').startOf(timeUnit).format('YYYY-MM-DD');
-            periods.push(periodStart);
+        
+        // Generate periods from start to end date
+        let currentPeriod = moment(start).startOf(timeUnit);
+        while (currentPeriod.isBefore(end)) {
+            periods.push(currentPeriod.format('YYYY-MM-DD'));
+            currentPeriod.add(1, timeUnit);
         }
-        periods.reverse();
 
         // Group PRs by the specified time unit
         const periodPRs = pullRequests.reduce((acc, pr) => {
@@ -252,9 +256,26 @@ class LeadTimeCalculator {
         }
     }
 
-    async calculateLeadTime(orgName, teamSlugs, timePeriod = 'months', timeValue = 1) {
+    async calculateLeadTime(orgName, teamSlugs, startDate, endDate, timeUnit) {
         try {
-            const startDate = moment().subtract(timeValue, timePeriod).startOf(timePeriod).toISOString();
+            const start = moment(startDate);
+            const end = moment(endDate);
+            
+            // Calculate timeValue based on the selected timeUnit
+            let timeValue;
+            switch(timeUnit) {
+                case 'day':
+                    timeValue = end.diff(start, 'days') + 1;
+                    break;
+                case 'week':
+                    timeValue = Math.ceil(end.diff(start, 'weeks', true));
+                    break;
+                case 'month':
+                    timeValue = Math.ceil(end.diff(start, 'months', true));
+                    break;
+                default:
+                    throw new Error('Invalid time unit');
+            }
 
             // Fetch team members for all teams in parallel
             const teamMembersPromises = teamSlugs.map(teamSlug => 
@@ -279,7 +300,8 @@ class LeadTimeCalculator {
                 this.getAllPullRequestsWithCommits({
                     owner: orgName, 
                     repo, 
-                    startDate, 
+                    startDate: start.toISOString(),
+                    endDate: end.toISOString(),
                     teamMembers
                 }).catch(error => {
                     console.warn(`Failed to fetch PRs for ${orgName}/${repo}: ${error.message}`);
@@ -290,12 +312,18 @@ class LeadTimeCalculator {
             const pullRequestsArrays = await Promise.all(pullRequestsPromises);
             const allPullRequests = pullRequestsArrays.flat();
 
-            const periodMetrics = this.calculatePeriodMetrics(allPullRequests, timePeriod.slice(0, -1), timeValue);
+            const periodMetrics = this.calculatePeriodMetrics(
+                allPullRequests, 
+                timeUnit, 
+                timeValue,
+                startDate,
+                endDate
+            );
 
             return {
                 organization: orgName,
                 team: teamSlugs,
-                timePeriod: `${timeValue} ${timePeriod}`,
+                timePeriod: `${startDate} to ${endDate}`,
                 periodMetrics: periodMetrics
             };
         } catch (error) {
@@ -706,7 +734,8 @@ async function analyze() {
     const token = document.getElementById('token').value;
     const orgName = document.getElementById('orgName').value;
     const selectedTeams = window.getSelectedTeams();
-    const timeValue = document.getElementById('timeValue').value;
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
     const timeUnit = document.getElementById('timeUnit').value;
     const errorDiv = document.getElementById('error');
     const loadingDiv = document.getElementById('loading');
@@ -723,6 +752,14 @@ async function analyze() {
     }
     if (!orgName) {
         errorDiv.textContent = 'Organization name is required';
+        return;
+    }
+    if (!startDate || !endDate) {
+        errorDiv.textContent = 'Both start and end dates are required';
+        return;
+    }
+    if (moment(endDate).isBefore(startDate)) {
+        errorDiv.textContent = 'End date must be after start date';
         return;
     }
 
@@ -750,15 +787,21 @@ async function analyze() {
 
     try {
         const calculator = new LeadTimeCalculator(token);
-        const results = await calculator.calculateLeadTime(orgName, selectedTeams, timeUnit, parseInt(timeValue));
+        const results = await calculator.calculateLeadTime(
+            orgName, 
+            selectedTeams, 
+            startDate, 
+            endDate,
+            timeUnit
+        );
 
-        // Generate charts
+        // Generate charts with the specified timeUnit
         generateSVGChart(
             results.periodMetrics.map(period => period.averageLeadTime),
             results.periodMetrics.map(period => period.periodStart),
             'Average Lead Time (minutes)',
             'avgChart',
-            timeUnit.slice(0, -1)
+            timeUnit
         );
 
         generateSVGChart(
@@ -766,7 +809,7 @@ async function analyze() {
             results.periodMetrics.map(period => period.periodStart),
             'Median Lead Time (minutes)',
             'medianChart',
-            timeUnit.slice(0, -1)
+            timeUnit
         );
 
         generateSVGChart(
@@ -774,7 +817,7 @@ async function analyze() {
             results.periodMetrics.map(period => period.periodStart),
             'Number of PRs',
             'prChart',
-            timeUnit.slice(0, -1)
+            timeUnit
         );
 
         // Add PR details table
@@ -792,4 +835,17 @@ async function analyze() {
     } finally {
         loadingDiv.style.display = 'none';
     }
-} 
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const endDate = moment().format('YYYY-MM-DD');
+    const startDate = moment().subtract(3, 'month').format('YYYY-MM-DD');
+    
+    document.getElementById('endDate').value = endDate;
+    document.getElementById('startDate').value = startDate;
+
+    // Set default time unit based on date range
+    const diffDays = moment(endDate).diff(moment(startDate), 'days');
+    const timeUnitSelect = document.getElementById('timeUnit');
+    timeUnitSelect.value = 'week';
+});

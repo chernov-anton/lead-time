@@ -241,6 +241,17 @@
             font-size: 0.8em;
             color: #666;
         }
+        #timeUnit {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: white;
+            cursor: pointer;
+        }
+        
+        #timeUnit:hover {
+            border-color: #aaa;
+        }
     </style>
 </head>
 <body>
@@ -262,12 +273,15 @@
                 <select id="teamSlug" style="display: none;"></select>
             </div>
             <div class="right-panel">
-                <input type="number" id="timeValue" placeholder="Time Value" value="1" min="1" />
+                <div class="date-range">
+                    <input type="date" id="startDate" />
+                    <span>to</span>
+                    <input type="date" id="endDate" />
+                </div>
                 <select id="timeUnit">
-                    <option value="weeks">Weeks</option>
-                    <option value="months">Months</option>
-                    <option value="days">Days</option>
-                    <option value="years">Years</option>
+                    <option value="day">Daily</option>
+                    <option value="week">Weekly</option>
+                    <option value="month">Monthly</option>
                 </select>
                 <button onclick="analyze()">Analyze</button>
             </div>
